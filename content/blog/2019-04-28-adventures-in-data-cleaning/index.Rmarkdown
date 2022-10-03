@@ -1,0 +1,172 @@
+---
+title: Adventures in Data Cleaning
+author: Stephen Feagin
+date: "2019-04-28"
+tags: [r, tidyverse, data cleaning]
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(message = FALSE)
+```
+
+I’m updating my first R-related blog post, from back in 2016. In it, I used **reshape2** to do some data
+cleaning on a messy dataset. In this update, I’m going to use tools from the tidyverse instead. I’m
+keeping most of the text the same, but changing the code chunks.<!--more--> 
+
+I’m updating my first R-related blog post, from back in 2016. In it, I used **reshape2** to do some data
+cleaning on a messy dataset. In this update, I’m going to use tools from the tidyverse instead. I’m
+keeping most of the text the same, but changing the code chunks. As before, this is an R Markdown
+file, so you can run the code along with me. You can find the data source 
+[here](data/datastream_excerpt.xlsx).
+
+I’ve been working with stock market data, which has proven much less straightforward than I had
+expected. Because the data I want is both cross-sectional and time-series — it uses daily data on
+multiple values for multiple companies over a length of time — the raw data is an absolute mess. I
+got the dataset from Thomson Reuters Datastream, which was a process in and of itself. So in this
+post, I’m just going to walk through the steps involved in cleaning the data into a workable data
+file.
+
+There are a couple of packages I’ll be using: readxl for reading in the Excel-formatted data, tidyr
+and dplyr for data cleaning, and here for dealing with filepaths in the website directoryt tree (you
+may not need to deal with that, though). The only one that I want to import into the global
+namespace is dplyr, because I only use the others once or twice.
+
+```{r}
+library(dplyr)
+```
+
+## Loading Data
+
+Easy enough:
+
+```{r}
+filepath <- "datastream_excerpt.xlsx"
+dat <- readxl::read_excel(filepath)
+```
+
+Let’s see how that looks in its original format:
+
+```{r}
+dat
+```
+
+None of these entries are entirely clear from just looking at the data. The first column, here
+called Name, is the numerical representation of the date for that entry. The second column gives us
+the adjusted share price for the company Abbott Labs, and the third shows the market value. The
+spreadsheet doesn’t actually indicate that the second column is the price, but I know that I
+downloaded only the share price and market value for each company. We can also see that there are a
+number of columns that Datastream failed to produce data for, showing up as #ERROR.
+
+## Dropping Invalid Columns
+
+The first step is to remove the #ERROR columns. I do this using the dplyr::select_at() function,
+which allows me to search for character strings within column names. I redefine my dat object as the
+original dataframe, minus any column whose name contains “ERROR.”
+
+```{r}
+dat <- select_at(dat, vars(-starts_with("#ERROR")))
+```
+
+While I’m at it, I’m going to rename the columns to all lowercase letters. Just for convenience, not
+necessary. I’m also going to change the name of the first column from name to date.
+dplyr::rename_all() is similar to dplyr::select_at(), except that I don’t have to specify a rule for
+determining which columns to include, and I add the function that I want applied to all of the
+column names.
+
+```{r}
+dat <- dat %>% 
+  rename_all(tolower) %>% 
+  rename(date = name)
+```
+
+Let’s take a look at the table now:
+
+```{r}
+dat
+```
+
+Much better.
+
+## Reshaping
+
+Now that we’ve cleaned up the column names, we can move onto the real problem: the shape of the
+dataset. This is where tidyr comes in. tidyr provides functions to transform long tables into wide
+ones, and vice-versa. We currently have a dataset with a row for each day, and seaparate columns for
+each variable (share price and market value), grouped into companies. We want to end up with a
+dataset with a row for each company-day, and a column for each variable. That is, I want a column
+for date, a column for company, a column for price, and a column for market_value. The number of
+rows should equal the number of companies multipled by the number of unique days in the dataset.
+Here is my general approach:
+
+1. Split the dataset into share price and market value tables
+2. Convert both tables into “long” format
+3. Join them back together by company name and date
+
+### Spliting the Data
+
+First, we need to split the dataset into two different tables, one for share price and one for
+market value.
+
+```{r}
+share_price <- select_at(dat, vars(-ends_with("market value")))
+market_value <- select_at(dat, vars(date, ends_with("value")))
+```
+
+Here’s the share_price table:
+
+```{r}
+share_price
+```
+
+And the market_value table:
+
+```{r}
+market_value
+```
+
+### Lengthening the Tables
+
+Next, we use the tidyr::gather() function to turn the very wide tables into long ones.
+
+```{r}
+share_price <- tidyr::gather(share_price, key = "company", value = "share_price", -date)
+market_value <- tidyr::gather(market_value, key = "company", value = "market_value", -date)
+```
+
+gather() takes a key argument, which is the name of the column in the new table that has all of the
+column names from the old table, and a value argument, which is the name of the column in the new
+table that actually contains the data. We also include -date to let the function know that we do not
+want the date field to be collapsed, we want it excluded from the operation.
+
+Here’s the share_price data now:
+
+```{r}
+share_price
+```
+
+And market_value:
+
+```{r}
+market_value
+```
+
+While I still have the data split, I’m going to clean up the company field in the market_value table
+so that it only has the company name.
+
+```{r}
+market_value <- mutate(market_value, company = gsub(" - market value", "", company))
+market_value
+```
+
+### Re-Combining
+
+Now all that’s left is to join the tables back together. dplyr provides a number of _join()
+functions that mirror SQL joins, so the operation is pretty intuitive if you’ve worked with database
+tables.
+
+```{r}
+new_data <- full_join(share_price, market_value, by = c("date", "company"))
+new_data
+```
+
+Beautiful.
