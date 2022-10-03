@@ -20,7 +20,7 @@ My first job out of graduate school was at the [Connecticut RISE Network](https:
 
 I have decided to take a look at North Carolina, my home state and a place that still holds special meaning for me. Luckily for me, the North Carolina Department of Public Instruction (NCDPI) has a good deal of openly available datasets to work with. They're somewhat scattered and perhaps not as easy to navigate as one might like, but it's great to have access to high quality, relevant data. In exploring what datasets were available, I settled on a simple question to investigate.
 
-This project is written in R markdown and is fully reproducible using data files that I list below. My goal is to present my the methodical process of the analysis, rather than as a piece of data journalism reporting on the findings.
+This project is written in R markdown and is fully reproducible using data files that I list below. My goal is to present the methodical process of the analysis, rather than putting forward a piece of data journalism reporting on the findings.
 
 # Question
 
