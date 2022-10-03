@@ -86,10 +86,10 @@ menu:
       title: Blog
       url: /blog/
       weight: 2
-    # - name: Projects
-    #   title: Project Portfolio
-    #   url: /project/
-    #   weight: 3
+    - name: Projects
+      title: Project Portfolio
+      url: /project/
+      weight: 3
 privacy:
   disqus:
     disable: no
