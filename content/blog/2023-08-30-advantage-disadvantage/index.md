@@ -9,7 +9,7 @@ tags:
   - probability
 subtitle: 'How much does advantage help, and how much does disadvantage hurt?'
 excerpt: 'How much does advantage help, and how much does disadvantage hurt?'
-draft: yes
+draft: false
 layout: single
 ---
 
