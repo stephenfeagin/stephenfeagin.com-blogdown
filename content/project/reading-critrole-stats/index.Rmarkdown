@@ -1,0 +1,171 @@
+---
+title: Reading Critical Role Stats
+date: 2022-10-31T15:25:37-04:00
+draft: true
+---
+
+```{r}
+suppressPackageStartupMessages(library(readxl))
+suppressPackageStartupMessages(library(dplyr))
+```
+
+
+# Vox Machina 
+
+First download the All Rolls spreadsheet from [Critical Role Stats](https://docs.google.com/spreadsheets/d/1OEg29XbL_YpO0m5JrLQpOPYTnxVsIg8iP67EYUrtRJg/edit?usp=sharing). I have this file in my .gitignore because the file is too big to load to GitHub.
+
+Then read it in:
+
+```{r warn=F}
+rolls <- read_excel(
+  "all-rolls.xlsx",
+  sheet = "All Episodes",
+  skip = 1,
+  col_names = c(
+    "episode",
+    "time",
+    "character",
+    "type_of_roll",
+    "total_value",
+    "natural_value",
+    "crit",
+    "damage",
+    "num_kills",
+    "notes"
+  ),
+  col_types = "text"
+)
+```
+
+Let's sanitize the `natural_value` column for invalid values. I'll first examine the unique values to determine which ones need to be coerced to `NA`.
+
+```{r}
+unique(rolls$natural_value)
+```
+
+There are a few variations of the spelling of "unknown" to account for, along with "--" which is obviously `NA`. Moreover, there are values below 1 and above 20.
+
+Because I'm only concerned with looking at the number and proportion of natural 20s and natural 1s, I'm going to leave in the rows that have natural roll values reported outside of the 1 to 20 range because they still factor into the total number of rolls and they count as non-critical, so we know all that we need to know from those data points.
+
+```{r}
+na_values <- c(
+  "Unknown", "unknown", "Unkown", "Uknown", "--"
+)
+rolls$natural_value[rolls$natural_value %in% na_values] <- NA
+```
+
+I go ahead and omit the rows with `NA` natural roll values:
+
+```{r}
+rolls <- filter(rolls, !is.na(natural_value))
+```
+
+
+Next, I want to filter out rolls that are not d20 rolls. I do this manually, looking at the unique values of `type_of_roll` and pulling out all those that are not attack rolls, ability checks, or saving throws, or other values where it's indicated that the roll is a d20. I go ahead and filter out the 5 `NA` values:
+
+```{r}
+rolls <- filter(rolls, !is.na(type_of_roll))
+```
+
+I will go through the types of rolls that are at all ambiguous:
+
+- `Unknown`: There are three rows with unknown roll type. Two of them have unknown natural value, so they are already omitted. The last one is known to be either a deception or persuasion roll (it's common that we don't know which of those two), so it stays in the data set.
+- `Alchemy`: Keyleth makes two alchemy kit checks, which are d20 rolls
+- `Beard` and `Beard Check`: These are d100 rolls that Grog makes to see if he grows a beard using his Belt of Dwarven Kind. They are omitted from the data set.
+- `Determine Focus`: It's not clear what this is for. They're both Grog rolls from episode 33, with values of 15 and 11. I'm going to guess that they're d20 rolls.
+- `Divine Intervention`: This is a d100 roll, so is omitted from the data set.
+- `Disappointment`: I initially assumed that this would be omitted, but it is specifically recorded as a natural 20, so it's obviously a d20 roll that needs to stay in the data set.
+- `Fart.`: Same as `Disappointment`, this is a strange one but it's a natural 20, so it stays.
+- `Inspiration`: Inspiration dice are never d20s, so they're removed from the data set.
+- `Missile Snare`: This is a d10 roll, so it's omitted.
+- `Musical Taste`: Watching the stream, this is in fact a d20 roll
+- `No reason.`: This is reported as a natural 1, so it stays.
+- `Other`: It looks like there are a couple that are clearly d20 rolls, but most of them are either ambiguous or clearly not d20 rolls. I will lose a bit of data but I'm going to omit this category.
+- `Spell Effect`: It's not at all clear what this roll was, other than that it was associated with a Dimension Door spell from Scanlan. I suspect it was a d20 roll but it could have been anything, so I'm going to leave it out.
+- `Test Roll`: There is only one of these, and it is reported as a natural 1. So it stays in.
+- `Trajectory`: I can't tell at all what this is referring to, so I'm leaving it out.
+
+```{r}
+non_d20 <- c(
+  "Beard",
+  "Beard Check",
+  "Cutting Words",
+  "d100",
+  "Damage",
+  "Divine Intervention",
+  "Inspiration",
+  "Missile Snare",
+  "Other",
+  "Spell Effect",
+  "Trajectory"
+)
+
+rolls <- filter(rolls, !(type_of_roll %in% non_d20))
+```
+
+I also want to sanitize a few episode numbers:
+
+```{r}
+rolls$episode[rolls$episode %in% c("31 p1", "31 p2")] <- 31
+rolls$episode[rolls$episode %in% c("33 p1", "33 p2")] <- 33
+rolls$episode[rolls$episode %in% c("35 p1", "35 p2")] <- 35
+rolls$episode <- as.integer(rolls$episode)
+```
+
+
+I want to see which episode had the most natural 20s and which had the most natural 1s, as well as which episodes had the highest *proportions* of natural 20s and natural 1s.
+
+```{r}
+crits <-
+  rolls %>%
+  filter(!is.na(natural_value)) %>%
+  mutate(natural_value = as.numeric(natural_value)) %>%
+  group_by(episode) %>%
+  summarize(
+    n_rolls = n(),
+    nat_20 = sum(natural_value == 20),
+    nat_1 = sum(natural_value == 1)
+  ) %>%
+  mutate(nat_20_prop = nat_20 / n_rolls,
+         nat_1_prop = nat_1 / n_rolls)
+```
+
+So which episode has the most natural 20s? Since the `episode` column is in order, we can simply get the index of the row.
+
+```{r}
+episodes <- tibble(
+  label = c(
+    "Fewest Natural 1s",
+    "Lowest Natural 1 Proportion",
+    "Most Natural 1s",
+    "Highest Natural 1 Proportion",
+    "Fewest Natural 20s",
+    "Lowest Natural 20 Proportion",
+    "Most Natural 20s",
+    "Highest Natural 20 Proportion"
+  )
+)
+episodes[, c("episode",
+  "n_rolls",
+  "nat_1",
+  "nat_1_prop",
+  "nat_20",
+  "nat_20_prop")] <-  crits[c(
+  which.min(crits$nat_1),
+  which.min(crits$nat_1_prop),
+  which.max(crits$nat_1),
+  which.max(crits$nat_1_prop),
+  which.min(crits$nat_20),
+  which.min(crits$nat_20_prop),
+  which.max(crits$nat_20),
+  which.max(crits$nat_20_prop)
+),
+c("episode",
+  "n_rolls",
+  "nat_1",
+  "nat_1_prop",
+  "nat_20",
+  "nat_20_prop")]
+
+episodes
+```
